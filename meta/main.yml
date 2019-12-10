@@ -1,4 +1,5 @@
 galaxy_info:
+  role_name: opendkim
   author: natefoo
   description: OpenDKIM installation, configuration, and management for Linux
   company: The Galaxy Project
