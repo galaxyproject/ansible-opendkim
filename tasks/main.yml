@@ -1,0 +1,113 @@
+---
+
+- name: Install OpenDKIM
+  package:
+    name: "{{ opendkim_packages }}"
+
+- name: Add include directive to system OpenDKIM configuration file
+  lineinfile:
+    path: "{{ opendkim_system_config_file }}"
+    line: "Include {{ opendkim_config_file }}"
+    backup: "{{ opendkim_backup_configs }}"
+  when: opendkim_config_file != opendkim_system_config_file
+
+- name: Install/update OpenDKIM config file
+  template:
+    src: "opendkim.conf.j2"
+    dest: "{{ opendkim_config_file }}"
+    backup: "{{ opendkim_backup_configs }}"
+  notify:
+    - restart opendkim
+
+- name: Generate OpenDKIM keys
+  command: >-
+    {{ opendkim_genkey_path }}
+      --directory={{ opendkim_keys_dir }}
+      {{ '--domain=' ~ item.domain if item.domain is defined else '' }}
+      {{ '--selector=' ~ item.selector if item.selector is defined else '' }}
+      {{ '--bits=' ~ item.bits if item.bits is defined else '' }}
+  args:
+    creates: "{{ opendkim_keys_dir }}/{{ item.selector |default('default') }}.private"
+  loop: "{{ opendkim_keys }}"
+  loop_control:
+    label: "{{ item.selector |default('default') }}"
+  when: item.secret is not defined and item.public is not defined
+
+- name: Install OpenDKIM secret keys
+  copy:
+    content: "{{ item.secret }}"
+    dest: "{{ opendkim_keys_dir }}/{{ item.selector |default('default') }}.private"
+  loop: "{{ opendkim_keys }}"
+  loop_control:
+    label: "{{ item.selector |default('default') }}"
+  when: item.secret is defined
+
+# Probably not necessary since these are just the DNS stubs
+- name: Install OpenDKIM public keys
+  copy:
+    # none of the mechanisms for specifying noqa 203 work to exclude this from a lint warning, even the blanket
+    # skip_ansible_lint tag, so that's cool
+    content: >
+      {{ item.selector |default('default') }}._domainkey	IN	TXT	( "{{ item.public }}" )  ;
+      ----- DKIM key {{ item.selector |default('default') }} for {{ item.domain |default('example.com') }}
+    dest: "{{ opendkim_keys_dir }}/{{ item.selector |default('default') }}.txt"
+  loop: "{{ opendkim_keys }}"
+  loop_control:
+    label: "{{ item.selector |default('default') }}"
+  when: item.public is defined
+
+- name: Ensure correct permissions on OpenDKIM keys
+  file:
+    path: "{{ opendkim_keys_dir }}/{{ item.selector |default('default') }}.private"
+    mode: "0600"
+    owner: "{{ opendkim_user }}"
+    group: "{{ opendkim_group }}"
+  loop: "{{ opendkim_keys }}"
+  loop_control:
+    label: "{{ item.selector |default('default') }}"
+
+- name: Install/update OpenDKIM KeyTable file
+  template:
+    src: "KeyTable.j2"
+    dest: "{{ __opendkim_config_merged.KeyTable.split(':')[1] }}"
+    backup: "{{ opendkim_backup_configs }}"
+  when: "'KeyTable' in __opendkim_config_merged"
+  notify:
+    - restart opendkim
+
+- name: Install/update OpenDKIM TrustedHosts file
+  template:
+    src: "TrustedHosts.j2"
+    dest: "{{ __opendkim_config_merged.InternalHosts.split(':')[1] }}"
+    backup: "{{ opendkim_backup_configs }}"
+  when: "'InternalHosts' in __opendkim_config_merged"
+  notify:
+    - restart opendkim
+
+- name: Install/update OpenDKIM SigningTable file
+  template:
+    src: "SigningTable.j2"
+    dest: "{{ __opendkim_config_merged.SigningTable.split(':')[1] }}"
+    backup: "{{ opendkim_backup_configs }}"
+  when: "'SigningTable' in __opendkim_config_merged"
+  notify:
+    - restart opendkim
+
+- name: Create OpenDKIM socket directory
+  file:
+    path: "{{ __opendkim_config_merged.Socket.split(':', 1)[1] |dirname }}"
+    state: directory
+    mode: "0750"
+    owner: "{{ opendkim_user }}"
+    group: "{{ opendkim_group }}"
+  when: __opendkim_config_merged.Socket is defined and __opendkim_config_merged.Socket.startswith('local:')
+
+# Perform whatever restarts are needed now, prevents double restart on first run
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Ensure OpenDKIM is enabled and running
+  service:
+    name: "{{ opendkim_service_name }}"
+    enabled: yes
+    state: started

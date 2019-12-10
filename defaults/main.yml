@@ -1,0 +1,69 @@
+---
+
+opendkim_keys: []
+opendkim_backup_configs: false
+
+__opendkim_debian: "{{ ansible_os_family == 'Debian' }}"
+__opendkim_redhat: "{{ ansible_os_family == 'RedHat' }}"
+__opendkim_os: "{{ ansible_os_family | lower }}"
+
+__opendkim_debian_packages:
+  - opendkim
+  - opendkim-tools
+  - openssl
+
+__opendkim_redhat_packages:
+  - opendkim
+  - openssl
+
+# openssl is only needed to generate keys, you can override this var to exclude it if your keys are already generated
+opendkim_packages: >-
+  {{
+    __opendkim_debian_packages if __opendkim_debian else (
+    __opendkim_redhat_packages if __opendkim_redhat else None)
+  }}
+
+opendkim_config_dir: >-
+  {{
+    '/etc/dkimkeys' if __opendkim_debian else (
+    '/etc/opendkim' if __opendkim_redhat else None)
+  }}
+
+opendkim_keys_dir: >-
+  {{
+    '/etc/dkimkeys' if __opendkim_debian else (
+    '/etc/opendkim/keys' if __opendkim_redhat else None)
+  }}
+
+opendkim_genkey_path: >-
+  {{
+    '/usr/bin/opendkim-genkey' if __opendkim_debian else (
+    '/usr/sbin/opendkim-genkey' if __opendkim_redhat else None)
+  }}
+
+# By default we'll add an Include directive to opendkim_system_config_file. To overwrite the entire config, set
+# opendkim_config_file to the same path as opendkim_system_config_file.
+opendkim_system_config_file: /etc/opendkim.conf
+opendkim_config_file: /etc/opendkim-ansible.conf
+
+__opendkim_config_default:
+  common: {}
+  debian: {}
+  redhat: {}
+
+__opendkim_config_merged: >-
+  {{
+    __opendkim_config_default.common
+    |combine(__opendkim_config_default[__opendkim_os] |default({}))
+    |combine(opendkim_config |default({}))
+  }}
+
+opendkim_service_name: opendkim
+
+opendkim_user: opendkim
+opendkim_group: opendkim
+
+# these are lists with one file line per list item; you are responsible for configuring these in opendkim_config,
+# setting these only causes the files to be created.
+opendkim_trusted_hosts: []
+opendkim_signing_table: []

@@ -1,0 +1,10 @@
+##
+## This file is maintained by Ansible - CHANGES WILL BE OVERWRITTEN
+##
+
+{% for opt in __opendkim_config_merged | sort %}
+{% set val = __opendkim_config_merged[opt] %}
+{% if val is not none %}
+{{ opt }} {{ 'yes' if val == true else ('no' if val == false else val) }}
+{% endif %}
+{% endfor %}

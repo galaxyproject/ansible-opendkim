@@ -1,0 +1,9 @@
+##
+## This file is maintained by Ansible - CHANGES WILL BE OVERWRITTEN
+##
+
+{% for key in opendkim_keys %}
+{% set selector = key.selector |default('default') -%}
+{% set domain = key.domain |default('example.com') -%}
+{{ selector }}._domainkey.{{ domain }} {{ domain }}:{{ selector }}:{{ opendkim_keys_dir }}/{{ selector }}.private
+{% endfor %}
